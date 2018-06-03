@@ -199,7 +199,6 @@ function removeUnnecessaryFieldsFromNutrientJson(nutrientJson) {
         if(cleanNutrientJson[i].hasOwnProperty('Std')){
             delete cleanNutrientJson[i]['Std'];
         }
-        delete cleanNutrientJson[i][Object.keys(cleanNutrientJson[i])[0]];
     }
 
     return cleanNutrientJson;
