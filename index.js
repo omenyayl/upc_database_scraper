@@ -1,90 +1,55 @@
-/*
-    This script will attempt to scrape the USDA database and persist it into a MongoDB database.
- */
+const MongoClient = require('mongodb').MongoClient;
+const fs = require('fs');
+const path = require('path');
+const foodScraper = require('./crawl_food_data');
 
-const request = require('request-promise');
-const cheerio = require('cheerio');
-const Crawler = require('crawler');
-const tabletojson = require('tabletojson');
+const CONFIG_FILE = path.resolve(__dirname, 'config.json');
 
+(async function() {
 
-const BASE_URL = 'https://ndb.nal.usda.gov';
-const START_URL = 'https://ndb.nal.usda.gov/ndb/search/list?maxsteps=6&format=&count=&max=25&sort=fd_s&fgcd=&manu=&lfacet=&qlookup=&ds=&qt=&qp=&qa=&qn=&q=&ing=&offset=25&order=asc';
+    const configJson = readConfig();
 
-/*
-    Regex Patterns for Extraction
- */
-const ID_PATTERN = new RegExp(/^(\d)+/g);
-const DESCRIPTION_PATTERN = new RegExp(/(?!(\d+))(.*?)(?=, UPC)/g);
-const UPC_PATTERN = new RegExp(/(?!UPC )\d+$/g);
-
-function main(){
-    usdaResultsCrawler.on('drain', ()=>{
-       console.log('Done!');
-    });
-    usdaResultsCrawler.queue(START_URL);
-}
-
-/**
- * Main crawler object that calls onRequestUsdaResults function whenever it requests a search page
- * filled with results.
- * @type {Crawler}
- */
-let usdaResultsCrawler = new Crawler({
-    maxConnections : 1,
-    // This will be called for each crawled page
-    callback : onRequestUsdaResults
-});
-
-function onRequestUsdaResults(err, res, done){
-    if(err){
+    const mongoUrl = configJson['mongoUrl'];
+    let client, db;
+    try{
+        client = await MongoClient.connect(mongoUrl);
+        db = client.db(configJson.dbName).collection(configJson.collectionName);
+    } catch (err){
         console.error(err);
-    } else {
-        let $ = res.$;
-
-        let resultsArray = getUsdaResults($);
-        console.log(resultsArray);
-
-        let nextButton = $('.nextLink').get(0);
-        let nextPage = BASE_URL + $(nextButton).attr('href');
-
-        // usdaResultsCrawler.queue(nextPage);
     }
 
-    done();
-}
+    try{
+        await foodScraper.crawlFood(db);
+    } catch (e){
+        console.error(e);
+    }
 
-function getUsdaResults($){
-    let resultsArray = [];
-    $('td:nth-child(2) a').each(async (i, result)=>{
-        let result_text = $(result).text().trim();
+    client.close();
 
-        let resultObj;
+})();
 
-        try{
-            let id = result_text.match(ID_PATTERN).pop();
-            let url = `https://ndb.nal.usda.gov/ndb/foods/show/${id}?format=Full&reportfmt=csv&Qv=1`;
-            let description = result_text.match(DESCRIPTION_PATTERN)[0].trim();
-            let upc = result_text.match(UPC_PATTERN).pop();
-            resultObj = {
-                id, description, upc, url
-            };
-            resultsArray.push(resultObj);
-        } catch (e){}
+function readConfig() {
+    if(!fs.existsSync(CONFIG_FILE)){
+        console.error('The config file is not found. Create a JSON file named config.json in the same directory as this ' +
+            'script. Then, create a field inside the JSON named mongoUrl, and populate it with your mongodb server\'s ' +
+            'URL.');
+        process.exit(1);
+    }
 
-        if(resultObj){
-            let resultCsv;
-            try{
-                resultCsv = await request(resultObj.url);
-                console.log(resultCsv);
-            } catch (e) {
-                console.error(e);
+    const configJson = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+
+    if(!configJson.hasOwnProperty('mongoUrl') ||
+        !configJson.hasOwnProperty('collectionName') ||
+        ! configJson.hasOwnProperty('dbName')){
+        console.error('The config file is not setup correctly. Here is an example config file: \n' + JSON.stringify(
+            {
+                mongoUrl: 'mongodb://my.mongo.url',
+                collectionName: 'myCollectionName',
+                dbName: "myDbName"
             }
-        }
+            , null, 4));
+        process.exit(1);
+    }
 
-    });
-
-    return resultsArray;
+    return configJson;
 }
-
-main();

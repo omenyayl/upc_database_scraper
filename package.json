@@ -2,10 +2,9 @@
   "name": "upc_database_scraper",
   "version": "0.0.1",
   "dependencies": {
-    "cheerio": "latest",
     "crawler": "latest",
-    "request-promise": "latest",
-    "tabletojson": "^0.8.0",
-    "request": "latest"
+    "csvtojson": "^2.0.3",
+    "mongodb": "^3.0.9",
+    "request": "^2.87.0"
   }
 }
