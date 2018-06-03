@@ -5,7 +5,7 @@ const Crawler = require('crawler');
 const csvtojson = require('csvtojson');
 
 const BASE_URL = 'https://ndb.nal.usda.gov';
-const START_URL = 'https://ndb.nal.usda.gov/ndb/search/list?maxsteps=6&format=&count=&max=25&sort=fd_s&fgcd=&manu=&lfacet=&qlookup=&ds=&qt=&qp=&qa=&qn=&q=&ing=&offset=25&order=asc';
+const START_URL = 'https://ndb.nal.usda.gov/ndb/search/list?maxsteps=6&format=&count=&max=25&sort=fd_s&fgcd=&manu=&lfacet=&qlookup=&ds=&qt=&qp=&qa=&qn=&q=&ing=&offset=0&order=asc';
 
 /*
     Regex Patterns for Extraction
@@ -63,7 +63,7 @@ const usdaResultsCrawler = new Crawler({
             let nextButton = $('.nextLink').get(0); // Search page pagination
             let nextPage = BASE_URL + $(nextButton).attr('href');
 
-            usdaResultsCrawler.queue(nextPage);
+            if(nextButton) usdaResultsCrawler.queue(nextPage);
         }
         done();
     }
