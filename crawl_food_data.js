@@ -3,6 +3,7 @@
  */
 const Crawler = require('crawler');
 const csvtojson = require('csvtojson');
+const process = require('process');
 
 const BASE_URL = 'https://ndb.nal.usda.gov';
 const START_URL = 'https://ndb.nal.usda.gov/ndb/search/list?maxsteps=6&format=&count=&max=25&sort=fd_s&fgcd=&manu=&lfacet=&qlookup=&ds=&qt=&qp=&qa=&qn=&q=&ing=&offset=0&order=asc';
@@ -128,22 +129,23 @@ const nutritionCsvCrawler = new Crawler({
  */
 function getUsdaResults($){
     let resultsArray = [];
-    $('td:nth-child(2) a').each((i, result)=>{
-        let result_text = $(result).text().trim();
+    $('tbody tr').each((i, result)=>{
 
-        let resultObj;
-
-        try{
-            let id = result_text.match(ID_PATTERN).pop();
+        let id = $('td:nth-child(2)', result).text().trim();
+        
+        if (id) {
             let url = `https://ndb.nal.usda.gov/ndb/foods/show/${id}?format=Full&reportfmt=csv&Qv=1`;
-            let description = result_text.match(DESCRIPTION_PATTERN)[0].trim();
-            let upc = result_text.match(UPC_PATTERN).pop();
-            resultObj = {
+            let descriptionUPC = $('td:nth-child(3)', result)
+                .text()
+                .trim()
+                .split(', UPC: ')
+            let description = descriptionUPC[0];
+            let upc = descriptionUPC[1];
+            
+            resultsArray.push({
                 id, description, upc, url
-            };
-            resultsArray.push(resultObj);
-            console.log(`Found: ${description}`)
-        } catch (e){}
+            });
+        }
 
     });
 
