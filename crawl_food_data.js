@@ -2,35 +2,23 @@
     This script will attempt to scrape the USDA database and persist it into a MongoDB database.
  */
 const Crawler = require('crawler');
-const csvtojson = require('csvtojson');
 const process = require('process');
+const fs = require('fs');
+const path = require('path');
 
 const BASE_URL = 'https://ndb.nal.usda.gov';
 const START_URL = 'https://ndb.nal.usda.gov/ndb/search/list?maxsteps=6&format=&count=&max=25&sort=fd_s&fgcd=&manu=&lfacet=&qlookup=&ds=&qt=&qp=&qa=&qn=&q=&ing=&offset=0&order=asc';
 
-/*
-    Regex Patterns for Extraction
- */
-const ID_PATTERN = new RegExp(/^(\d)+/g);
-const DESCRIPTION_PATTERN = new RegExp(/(?!(\d+))(.*?)(?=, UPC)/g);
-const UPC_PATTERN = new RegExp(/(?!UPC )\d+$/g);
-const NUTRIENT_PATTERN = new RegExp(/Nutrient,Unit[^]+Other/g);
-const NUTRIENT_SUBTRACTION_PATTERN = new RegExp(/Proximates\n|Minerals\n|Vitamins\n|Lipids\n|Amino Acids\n|Other\n|Ingredients/g);
-const INGREDIENTS_PATTERN = new RegExp(/Ingredients\n"[^]+"/g);
-const INGREDIENTS_SUBTRACTION_PATTERN = new RegExp(/Ingredients\n"|\."/g);
-const INGREDIENTS_CLEANUP_PATTERN = new RegExp(/[()\[\]]/g);
-const INGREDIENTS_COMMA_SPLIT_PATTERN = new RegExp(/,\s?/g);
-
-let db;
+let outputDirectory;
 
 /**
  * Initiate the food crawl
- * @returns {Promise<none>}
- * @param mongodb
+ * @returns {Promise<>}
+ * @param outDir The output directory
  */
-exports.crawlFood = function(mongodb){
+exports.crawlFood = function(outDir){
+   outputDirectory = outDir;
     return new Promise((resolve)=>{
-        db = mongodb;
         nutritionCsvCrawler.on('drain', ()=>{
             resolve();
         });
@@ -83,37 +71,19 @@ const nutritionCsvCrawler = new Crawler({
         if(err){
             console.error(err);
         } else {
-            let nutrientCsv;
-            let nutrientJson;
-            let ingredients;
-
-            try{
-                nutrientCsv = getNutrientCsv(res.body);
-                if(nutrientCsv){
-                    nutrientJson = await csvtojson().fromString(nutrientCsv);
-                    nutrientJson = removeUnnecessaryFieldsFromNutrientJson(nutrientJson);
-                    ingredients = getIngredientsArray(res.body);
-
-                    if(nutrientJson){
-                        console.log(`Found ingredients and nutrients for ${res.options.foodObj.description}`);
-                        let foodObj = res.options.foodObj;
-                        foodObj.ingredients = ingredients;
-                        foodObj.nutrients = nutrientJson;
-
-                        try{
-                            await db.insert(foodObj);
-                        } catch (e){
-                            console.error(`Could not insert the food item to the database.`);
-                        }
-
-                    } else {
-                        console.error(`COULD NOT FIND nutrients for ${res.options.foodObj.description}`);
-                        console.log(`Here is the URI: ${res.options.uri}`);
+            let csv = res.body;
+            let id = res.options.foodObj.id;
+            let description = res.options.foodObj.description;
+            if (csv) {
+                let outPath = path.join(outputDirectory, id + '.csv');
+                fs.writeFile(outPath, csv, err => {
+                    if (!err) {
+                        console.log(`Data for ${description} written to ${outPath}`);
                     }
-
-                }
-            } catch (e){
-                console.error(e);
+                    else {
+                        console.error(err);
+                    }
+                });
             }
 
             done();
@@ -138,7 +108,7 @@ function getUsdaResults($){
             let descriptionUPC = $('td:nth-child(3)', result)
                 .text()
                 .trim()
-                .split(', UPC: ')
+                .split(/,?\s*UPC:\s*/g);
             let description = descriptionUPC[0];
             let upc = descriptionUPC[1];
             
@@ -152,56 +122,3 @@ function getUsdaResults($){
     return resultsArray;
 }
 
-/**
- * Isolated the nutrient information from the entire food item's CSV.
- * @param csvString Contains the full CSV data from the food item.
- * @returns {String} CSV containing nutrient information.
- */
-function getNutrientCsv(csvString){
-    let nutrientCsv;
-    let nutrientMatch = csvString.match(NUTRIENT_PATTERN);
-    if(nutrientMatch){
-        nutrientCsv = nutrientMatch[0];
-        nutrientCsv = nutrientCsv.replace(NUTRIENT_SUBTRACTION_PATTERN, "").trim();
-    } else{
-        console.error(csvString);
-    }
-    return nutrientCsv;
-}
-
-/**
- * Parses the ingredients from the CSV data for the food item.
- * @param csvString
- * @returns {Array} An array containing the ingredients for the food item.
- */
-function getIngredientsArray(csvString){
-    let ingredients;
-    const ingredientsMatch = csvString.match(INGREDIENTS_PATTERN);
-    if(ingredientsMatch){
-        ingredients = ingredientsMatch[0].replace(INGREDIENTS_SUBTRACTION_PATTERN, "").trim();
-        ingredients = ingredients.replace(INGREDIENTS_CLEANUP_PATTERN, ""); // remove parentheses and brackets
-        return ingredients.split(INGREDIENTS_COMMA_SPLIT_PATTERN);
-    } else {
-        return null;
-    }
-}
-
-/**
- * Removes the 'Data points', 'Std', and another unnecessary field from the nutrient json.
- * @param nutrientJson
- * @returns {Object} Clean nutrient object.
- */
-function removeUnnecessaryFieldsFromNutrientJson(nutrientJson) {
-    let cleanNutrientJson = nutrientJson;
-
-    for(let i = 0; i < cleanNutrientJson.length; i++){
-        if(cleanNutrientJson[i].hasOwnProperty('Data points')){
-            delete cleanNutrientJson[i]['Data points'];
-        }
-        if(cleanNutrientJson[i].hasOwnProperty('Std')){
-            delete cleanNutrientJson[i]['Std'];
-        }
-    }
-
-    return cleanNutrientJson;
-}
