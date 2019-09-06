@@ -3,8 +3,6 @@
   "version": "0.0.1",
   "dependencies": {
     "crawler": "latest",
-    "csvtojson": "^2.0.3",
-    "mongodb": "^3.0.9",
     "request": "^2.87.0"
   }
 }
